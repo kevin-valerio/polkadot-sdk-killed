@@ -177,6 +177,7 @@ impl NotificationProtocol {
 	}
 
 	/// Handle `Peerset` command.
+	#[allow(unused)]
 	async fn on_peerset_command(&mut self, command: PeersetNotificationCommand) {
 		match command {
 			PeersetNotificationCommand::OpenSubstream { peers } => {
