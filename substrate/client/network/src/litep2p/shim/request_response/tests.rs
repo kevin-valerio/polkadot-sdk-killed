@@ -417,7 +417,6 @@ async fn fallback_request_compatible_peers() {
 		event => panic!("invalid event: {event:?}"),
 	}
 
-	// sender: oneshot::Sender<Result<(Vec<u8>, ProtocolName), RequestFailure>>,
 	match result_rx.await {
 		Ok(Ok((response, protocol))) => {
 			assert_eq!(response, vec![5, 6, 7, 8]);
@@ -522,7 +521,6 @@ async fn fallback_request_old_peer_receives() {
 		event => panic!("invalid event: {event:?}"),
 	}
 
-	// sender: oneshot::Sender<Result<(Vec<u8>, ProtocolName), RequestFailure>>,
 	match result_rx.await {
 		Ok(Ok((response, protocol))) => {
 			assert_eq!(response, vec![1, 3, 3, 8]);

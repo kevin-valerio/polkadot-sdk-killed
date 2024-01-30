@@ -900,11 +900,21 @@ where
 	}
 
 	fn process_notification_event(&mut self, event: NotificationEvent) {
+		log::debug!(
+			target: LOG_TARGET,
+			"process notification event: {event:?}",
+		);
+
 		match event {
 			NotificationEvent::ValidateInboundSubstream { peer, handshake, result_tx } => {
 				let validation_result = self
 					.validate_connection(&peer, handshake, Direction::Inbound)
 					.map_or(ValidationResult::Reject, |_| ValidationResult::Accept);
+
+				log::debug!(
+					target: LOG_TARGET,
+					"send validation result for {peer:?}: {validation_result:?}",
+				);
 
 				let _ = result_tx.send(validation_result);
 			},
@@ -935,6 +945,11 @@ where
 				}
 			},
 			NotificationEvent::NotificationStreamClosed { peer } => {
+				log::debug!(
+					target: LOG_TARGET,
+					"notification stream closed for {peer:?}",
+				);
+
 				self.on_sync_peer_disconnected(peer);
 			},
 			NotificationEvent::NotificationReceived { peer, notification } => {
