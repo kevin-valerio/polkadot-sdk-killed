@@ -29,7 +29,7 @@ use crate::{
 	MessageSink, NotificationService, ProtocolName,
 };
 
-use futures::{future::BoxFuture, stream::FuturesUnordered, Stream, StreamExt};
+use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use litep2p::protocol::notification::{
 	NotificationEvent, NotificationHandle, NotificationSink,
 	ValidationResult as Litep2pValidationResult,
@@ -38,12 +38,7 @@ use tokio::sync::oneshot;
 
 use sc_network_types::PeerId;
 
-use std::{
-	collections::HashSet,
-	fmt,
-	pin::Pin,
-	task::{Context, Poll},
-};
+use std::{collections::HashSet, fmt};
 
 pub mod config;
 pub mod peerset;
@@ -177,7 +172,6 @@ impl NotificationProtocol {
 	}
 
 	/// Handle `Peerset` command.
-	#[allow(unused)]
 	async fn on_peerset_command(&mut self, command: PeersetNotificationCommand) {
 		match command {
 			PeersetNotificationCommand::OpenSubstream { peers } => {
@@ -271,150 +265,28 @@ impl NotificationService for NotificationProtocol {
 
 	/// Get next event from the `Notifications` event stream.
 	async fn next_event(&mut self) -> Option<SubstrateNotificationEvent> {
-		self.next().await
-		// loop {
-		// 	return self.next().await
-		// }
-		// loop {
-		// 	tokio::select! {
-		// 		biased;
-
-		// 		event = self.handle.next() => match event? {
-		// 			NotificationEvent::ValidateSubstream { peer, handshake, .. } => {
-		// 				if let ValidationResult::Reject = self.peerset.report_inbound_substream(peer.into()) {
-		// 					self.handle.send_validation_result(peer, Litep2pValidationResult::Reject);
-		// 					continue;
-		// 				}
-
-		// 				let (tx, rx) = oneshot::channel();
-		// 				self.pending_validations.push(Box::pin(async move { (peer.into(), rx.await) }));
-
-		// 				log::trace!(target: LOG_TARGET, "{}: validate substream for {peer:?}", self.protocol);
-
-		// 				return Some(SubstrateNotificationEvent::ValidateInboundSubstream {
-		// 					peer: peer.into(),
-		// 					handshake,
-		// 					result_tx: tx,
-		// 				});
-		// 			}
-		// 			NotificationEvent::NotificationStreamOpened {
-		// 				peer,
-		// 				fallback,
-		// 				handshake,
-		// 				direction,
-		// 				..
-		// 			} => {
-		// 				self.metrics.register_substream_opened(&self.protocol);
-
-		// 				match self.peerset.report_substream_opened(peer.into(), direction.into()) {
-		// 					OpenResult::Reject => {
-		// 						let _ = self.handle.close_substream_batch(vec![peer].into_iter().map(From::from)).await;
-		// 						self.pending_cancels.insert(peer);
-
-		// 						continue
-		// 					}
-		// 					OpenResult::Accept { direction } => {
-		// 						log::trace!(target: LOG_TARGET, "{}: substream opened for {peer:?}", self.protocol);
-
-		// 						return Some(SubstrateNotificationEvent::NotificationStreamOpened {
-		// 							peer: peer.into(),
-		// 							handshake,
-		// 							direction,
-		// 							negotiated_fallback: fallback.map(From::from),
-		// 						});
-		// 					}
-		// 				}
-		// 			}
-		// 			NotificationEvent::NotificationStreamClosed {
-		// 				peer,
-		// 			} => {
-		// 				log::trace!(target: LOG_TARGET, "{}: substream closed for {peer:?}", self.protocol);
-
-		// 				self.metrics.register_substream_closed(&self.protocol);
-		// 				self.peerset.report_substream_closed(peer.into());
-
-		// 				if self.pending_cancels.remove(&peer) {
-		// 					log::debug!(
-		// 						target: LOG_TARGET,
-		// 						"{}: substream closed to canceled peer ({peer:?})",
-		// 						self.protocol
-		// 					);
-		// 					continue
-		// 				}
-
-		// 				return Some(SubstrateNotificationEvent::NotificationStreamClosed { peer: peer.into() })
-		// 			}
-		// 			NotificationEvent::NotificationStreamOpenFailure {
-		// 				peer,
-		// 				error,
-		// 			} => {
-		// 				log::trace!(target: LOG_TARGET, "{}: open failure for {peer:?}", self.protocol);
-		// 				self.peerset.report_substream_open_failure(peer.into(), error);
-		// 			}
-		// 			NotificationEvent::NotificationReceived {
-		// 				peer,
-		// 				notification,
-		// 			} => {
-		// 				self.metrics.register_notification_received(&self.protocol, notification.len());
-
-		// 				if !self.pending_cancels.contains(&peer) {
-		// 					return Some(SubstrateNotificationEvent::NotificationReceived {
-		// 						peer: peer.into(),
-		// 						notification: notification.to_vec(),
-		// 					});
-		// 				}
-		// 			}
-		// 		},
-		// 		result = self.pending_validations.next(), if !self.pending_validations.is_empty() => {
-		// 			let (peer, result) = result?;
-		// 			let validation_result = match result {
-		// 				Ok(ValidationResult::Accept) => Litep2pValidationResult::Accept,
-		// 				_ => {
-		// 					self.peerset.report_substream_rejected(peer);
-		// 					Litep2pValidationResult::Reject
-		// 				}
-		// 			};
-
-		// 			self.handle.send_validation_result(peer.into(), validation_result);
-		// 		}
-		// 		command = self.peerset.next() => self.on_peerset_command(command?).await,
-		// 	}
-		// }
-	}
-}
-
-impl Stream for NotificationProtocol {
-	type Item = SubstrateNotificationEvent;
-
-	fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
 		loop {
-			match self.handle.poll_next_unpin(cx) {
-				Poll::Pending => break,
-				Poll::Ready(None) => return Poll::Ready(None),
-				Poll::Ready(Some(event)) => match event {
+			tokio::select! {
+				biased;
+
+				event = self.handle.next() => match event? {
 					NotificationEvent::ValidateSubstream { peer, handshake, .. } => {
-						if let ValidationResult::Reject =
-							self.peerset.report_inbound_substream(peer.into())
-						{
-							self.handle
-								.send_validation_result(peer, Litep2pValidationResult::Reject);
+						if let ValidationResult::Reject = self.peerset.report_inbound_substream(peer.into()) {
+							self.handle.send_validation_result(peer, Litep2pValidationResult::Reject);
 							continue;
 						}
 
 						let (tx, rx) = oneshot::channel();
-						self.pending_validations
-							.push(Box::pin(async move { (peer.into(), rx.await) }));
+						self.pending_validations.push(Box::pin(async move { (peer.into(), rx.await) }));
 
 						log::trace!(target: LOG_TARGET, "{}: validate substream for {peer:?}", self.protocol);
 
-						return Poll::Ready(Some(
-							SubstrateNotificationEvent::ValidateInboundSubstream {
-								peer: peer.into(),
-								handshake,
-								result_tx: tx,
-							},
-						));
-					},
+						return Some(SubstrateNotificationEvent::ValidateInboundSubstream {
+							peer: peer.into(),
+							handshake,
+							result_tx: tx,
+						});
+					}
 					NotificationEvent::NotificationStreamOpened {
 						peer,
 						fallback,
@@ -426,29 +298,26 @@ impl Stream for NotificationProtocol {
 
 						match self.peerset.report_substream_opened(peer.into(), direction.into()) {
 							OpenResult::Reject => {
-								if let Err(_) = self.handle.try_close_substream_batch(
-									vec![peer].into_iter().map(From::from),
-								) {
-									log::error!(target: LOG_TARGET, "failed to close substreams to peers");
-									panic!("failed to close substreams to peers");
-								}
+								let _ = self.handle.close_substream_batch(vec![peer].into_iter().map(From::from)).await;
 								self.pending_cancels.insert(peer);
-							},
+
+								continue
+							}
 							OpenResult::Accept { direction } => {
 								log::trace!(target: LOG_TARGET, "{}: substream opened for {peer:?}", self.protocol);
 
-								return Poll::Ready(Some(
-									SubstrateNotificationEvent::NotificationStreamOpened {
-										peer: peer.into(),
-										handshake,
-										direction,
-										negotiated_fallback: fallback.map(From::from),
-									},
-								));
-							},
+								return Some(SubstrateNotificationEvent::NotificationStreamOpened {
+									peer: peer.into(),
+									handshake,
+									direction,
+									negotiated_fallback: fallback.map(From::from),
+								});
+							}
 						}
-					},
-					NotificationEvent::NotificationStreamClosed { peer } => {
+					}
+					NotificationEvent::NotificationStreamClosed {
+						peer,
+					} => {
 						log::trace!(target: LOG_TARGET, "{}: substream closed for {peer:?}", self.protocol);
 
 						self.metrics.register_substream_closed(&self.protocol);
@@ -463,79 +332,43 @@ impl Stream for NotificationProtocol {
 							continue
 						}
 
-						return Poll::Ready(Some(
-							SubstrateNotificationEvent::NotificationStreamClosed {
-								peer: peer.into(),
-							},
-						))
-					},
-					NotificationEvent::NotificationStreamOpenFailure { peer, error } => {
+						return Some(SubstrateNotificationEvent::NotificationStreamClosed { peer: peer.into() })
+					}
+					NotificationEvent::NotificationStreamOpenFailure {
+						peer,
+						error,
+					} => {
 						log::trace!(target: LOG_TARGET, "{}: open failure for {peer:?}", self.protocol);
 						self.peerset.report_substream_open_failure(peer.into(), error);
-					},
-					NotificationEvent::NotificationReceived { peer, notification } => {
-						self.metrics
-							.register_notification_received(&self.protocol, notification.len());
+					}
+					NotificationEvent::NotificationReceived {
+						peer,
+						notification,
+					} => {
+						self.metrics.register_notification_received(&self.protocol, notification.len());
 
 						if !self.pending_cancels.contains(&peer) {
-							return Poll::Ready(Some(
-								SubstrateNotificationEvent::NotificationReceived {
-									peer: peer.into(),
-									notification: notification.to_vec(),
-								},
-							));
+							return Some(SubstrateNotificationEvent::NotificationReceived {
+								peer: peer.into(),
+								notification: notification.to_vec(),
+							});
 						}
-					},
+					}
 				},
-			}
-		}
-
-		while !self.pending_validations.is_empty() {
-			match self.pending_validations.poll_next_unpin(cx) {
-				Poll::Pending => break,
-				Poll::Ready(None) => return Poll::Ready(None),
-				Poll::Ready(Some((peer, result))) => {
+				result = self.pending_validations.next(), if !self.pending_validations.is_empty() => {
+					let (peer, result) = result?;
 					let validation_result = match result {
 						Ok(ValidationResult::Accept) => Litep2pValidationResult::Accept,
 						_ => {
 							self.peerset.report_substream_rejected(peer);
 							Litep2pValidationResult::Reject
-						},
+						}
 					};
 
 					self.handle.send_validation_result(peer.into(), validation_result);
-				},
+				}
+				command = self.peerset.next() => self.on_peerset_command(command?).await,
 			}
 		}
-
-		match futures::ready!(self.peerset.poll_next_unpin(cx)) {
-			None => return Poll::Ready(None),
-			Some(PeersetNotificationCommand::OpenSubstream { peers }) => {
-				log::debug!(target: LOG_TARGET, "{}: open substreams to {peers:?}", self.protocol);
-
-				if let Err(peers) =
-					self.handle.try_open_substream_batch(peers.into_iter().map(From::from))
-				{
-					if !peers.is_empty() {
-						log::error!(target: LOG_TARGET, "failed to batch open substreams");
-						debug_assert!(false);
-					}
-				}
-			},
-			Some(PeersetNotificationCommand::CloseSubstream { peers }) => {
-				log::debug!(target: LOG_TARGET, "{}: close substreams to {peers:?}", self.protocol);
-
-				if let Err(peers) =
-					self.handle.try_close_substream_batch(peers.into_iter().map(From::from))
-				{
-					if !peers.is_empty() {
-						log::error!(target: LOG_TARGET, "failed to batch close substreams");
-						debug_assert!(false);
-					}
-				}
-			},
-		}
-
-		Poll::Pending
 	}
 }

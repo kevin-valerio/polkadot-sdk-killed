@@ -464,7 +464,13 @@ impl Peerset {
 				return OpenResult::Reject
 			},
 			state => {
-				panic!("{}: invalid state for open substream {peer:?} {state:?}", self.protocol);
+				log::debug!(
+					target: LOG_TARGET,
+					"{}: invalid state for open substream {peer:?} {state:?}, rejecting",
+					self.protocol,
+				);
+
+				return OpenResult::Reject
 			},
 		}
 	}
