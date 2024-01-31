@@ -173,6 +173,12 @@ impl NotificationProtocol {
 
 	/// Handle `Peerset` command.
 	async fn on_peerset_command(&mut self, command: PeersetNotificationCommand) {
+		log::trace!(
+			target: LOG_TARGET,
+			"{}: handle peerset command {command:?}",
+			self.protocol,
+		);
+
 		match command {
 			PeersetNotificationCommand::OpenSubstream { peers } => {
 				log::debug!(target: LOG_TARGET, "{}: open substreams to {peers:?}", self.protocol);
@@ -272,6 +278,12 @@ impl NotificationService for NotificationProtocol {
 				event = self.handle.next() => match event? {
 					NotificationEvent::ValidateSubstream { peer, handshake, .. } => {
 						if let ValidationResult::Reject = self.peerset.report_inbound_substream(peer.into()) {
+							log::trace!(
+								target: LOG_TARGET,
+								"{}: peerset rejected substream from {peer:?}",
+								self.protocol,
+							);
+
 							self.handle.send_validation_result(peer, Litep2pValidationResult::Reject);
 							continue;
 						}
@@ -298,7 +310,17 @@ impl NotificationService for NotificationProtocol {
 
 						match self.peerset.report_substream_opened(peer.into(), direction.into()) {
 							OpenResult::Reject => {
-								let _ = self.handle.close_substream_batch(vec![peer].into_iter().map(From::from)).await;
+								log::debug!(
+									target: LOG_TARGET,
+									"{}: peerset rejected opened substream from {peer:?}, canceling",
+									self.protocol,
+								);
+
+								if let Err(peers) = self.handle.try_close_substream_batch(vec![peer].into_iter().map(From::from)) {
+									if !peers.is_empty() {
+										panic!("{}: failed to batch close substreams", self.protocol)
+									}
+								}
 								self.pending_cancels.insert(peer);
 
 								continue
@@ -357,6 +379,13 @@ impl NotificationService for NotificationProtocol {
 				},
 				result = self.pending_validations.next(), if !self.pending_validations.is_empty() => {
 					let (peer, result) = result?;
+
+					log::trace!(
+						target: LOG_TARGET,
+						"{}: send validation result for {peer:?}: {result:?}",
+						self.protocol,
+					);
+
 					let validation_result = match result {
 						Ok(ValidationResult::Accept) => Litep2pValidationResult::Accept,
 						_ => {
