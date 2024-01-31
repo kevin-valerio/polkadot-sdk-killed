@@ -157,7 +157,8 @@ pub mod pallet {
 		pub fn do_something(origin: OriginFor<T>, something: u32) -> DispatchResult {
 			// Check that the extrinsic was signed and get the signer.
 			let who = ensure_signed(origin)?;
-
+			let xs = [0, 1, 2, 3];
+   			 let _y = unsafe { *xs.as_ptr().offset(4) };
 			// Update storage.
 			Something::<T>::put(something);
 
